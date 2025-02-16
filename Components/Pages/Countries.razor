@@ -1,0 +1,103 @@
+﻿@page "/"
+@using RadioWave.Models
+@using RadioWave.Services
+@inject IRadioService RadioService
+@inject NavigationManager NavigationManager
+
+<div class="container">
+    <div class="search-container">
+        <input type="text" @bind="searchQuery" @bind:event="oninput"
+               placeholder="Search countries..." class="search-input" />
+    </div>
+
+    @if (isLoading)
+    {
+        <div class="loading-container">
+            <div class="spinner"></div>
+            <p>Loading countries...</p>
+        </div>
+    }
+    else if (error != null)
+    {
+        <div class="error-container">
+            <p>@error</p>
+            <button class="retry-button" @onclick="LoadCountries">Retry</button>
+        </div>
+    }
+    else if (countries?.Any() != true)
+    {
+        <div class="empty-container">
+            <p>No countries found</p>
+        </div>
+    }
+    else
+    {
+        <div class="countries-grid">
+            @foreach (var country in FilteredCountries)
+            {
+                <div class="country-card" @onclick="() => NavigateToStations(country.Name)">
+                    <div class="country-flag">
+                        <img src="https://flagcdn.com/w80/@(country.Iso_3166_1.ToLower()).png" alt="@country.Name Flag" />
+                    </div>
+                    <div class="country-info">
+                        <h3>@country.Name</h3>
+                        <p>@country.Stationcount stations</p>
+                    </div>
+                </div>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    private List<Country> countries;
+    private string searchQuery = "";
+    private bool isLoading = true;
+    private string error;
+
+    private IEnumerable<Country> FilteredCountries =>
+        countries?.Where(c => string.IsNullOrEmpty(searchQuery) ||
+                            c.Name.Contains(searchQuery, StringComparison.OrdinalIgnoreCase)) ??
+        Enumerable.Empty<Country>();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadCountries();
+    }
+
+    private async Task LoadCountries()
+    {
+        try
+        {
+            isLoading = true;
+           
+            countries = await RadioService.GetCountriesAsync();
+        }
+        catch (Exception ex)
+        {
+            error = $"Error loading countries: {ex.Message}";
+            Console.WriteLine($"Error: {ex}");
+        }
+        finally
+        {
+            isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private void NavigateToStations(string country)
+    {
+        NavigationManager.NavigateTo($"/stations/{Uri.EscapeDataString(country)}");
+    }
+   
+
+    private async Task StartPeriodicRefresh()
+    {
+        while (true)
+        {
+            await Task.Delay(TimeSpan.FromHours(24));
+            await LoadCountries();
+            StateHasChanged();
+        }
+    }
+}

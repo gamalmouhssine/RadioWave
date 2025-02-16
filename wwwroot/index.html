@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <title>RadioWave</title>
+    <base href="/" />
+    <link rel="stylesheet" href="css/bootstrap/bootstrap.min.css" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" />
+    <link rel="stylesheet" href="css/app.css" />
+    <link rel="stylesheet" href="RadioWave.styles.css" />
+    <link rel="icon" type="image/png" href="favicon.png" />
+
+
+</head>
+
+<body>
+
+    <div class="status-bar-safe-area"></div>
+
+    <div id="app">Loading...</div>
+
+
+    <script src="_framework/blazor.webview.js" autostart="false"></script>
+    <script>
+        function showNotification(message) {
+            if (Notification.permission === "granted") {
+                new Notification(message);
+            } else if (Notification.permission !== "denied") {
+                Notification.requestPermission().then(permission => {
+                    if (permission === "granted") {
+                        new Notification(message);
+                    }
+                });
+            }
+        }
+
+        function stopAudio() {
+            var audio = document.getElementById("audio-player");
+            if (audio) {
+                audio.pause();
+            }
+        }
+
+        function playAudio(url) {
+            var audio = document.getElementById("audio-player");
+            if (!audio) {
+                audio = document.createElement("audio");
+                audio.id = "audio-player";
+                document.body.appendChild(audio);
+            }
+            audio.src = url;
+            audio.play();
+        }
+    </script>
+    <script src="js/infiniteScroll.js"></script>
+    <script src="js/popupStorage.js"></script>
+    <script src="js/share.js"></script>
+
+</body>
+
+</html>

@@ -1,0 +1,41 @@
+﻿@inject IJSRuntime JS
+
+
+@code {
+    private bool showPopup = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Check if the popup was already shown
+        showPopup = !(await JS.InvokeAsync<bool>("getPopupStatus"));
+    }
+
+    private async Task ClosePopup()
+    {
+        showPopup = false;
+        await JS.InvokeVoidAsync("setPopupStatus"); // Save status in localStorage
+    }
+
+    private async Task RateApp(int stars)
+    {
+        Console.WriteLine($"User rated {stars} stars");
+        await ClosePopup();
+    }
+}
+
+@if (showPopup)
+{
+    <div class="popup-overlay">
+        <div class="popup-container">
+            <h2>Rate RadioWave</h2>
+            <p>How would you rate your experience?</p>
+            <div class="stars">
+                @for (int i = 1; i <= 5; i++)
+                {
+                    <span class="star" @onclick="() => RateApp(i)">&#9733;</span>
+                }
+            </div>
+            <button class="close-button" @onclick="ClosePopup">Close</button>
+        </div>
+    </div>
+}

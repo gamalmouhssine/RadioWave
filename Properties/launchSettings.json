@@ -1,0 +1,13 @@
+{
+  "profiles": {
+    "Windows Machine": {
+      "commandName": "MsixPackage",
+      "nativeDebugging": false
+    }
+  },
+  "EmailSettings": {
+    "SenderEmail": "mouhssinegamal2@gmail.com",
+    "Password": "GamalFahd1230@@@#",
+    "ReceiverEmail": "mouhssinegamal2@gmail.com"
+  }
+}

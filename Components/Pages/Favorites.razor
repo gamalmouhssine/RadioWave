@@ -1,0 +1,116 @@
+﻿@page "/favorites"
+@using RadioWave.Models
+@using RadioWave.Services
+@using System.Text.Json
+@inject IFavoriteService FavoriteService
+@inject IJSRuntime JSRuntime
+
+<div class="container">
+    <h1 class="page-title">Favorite Stations</h1>
+
+    @if (isLoading)
+    {
+        <div class="loading-container">
+            <div class="spinner"></div>
+        </div>
+    }
+    else if (!favoriteStations?.Any() == true)
+    {
+        <div class="empty-container">
+            <p>No favorite stations yet</p>
+        </div>
+    }
+    else
+    {
+        <div class="stations-grid">
+            @foreach (var station in favoriteStations)
+            {
+                <div class="station-card">
+                    <div class="station-info">
+                        @if (!string.IsNullOrEmpty(station.Favicon) && IsValidImageUrl(station.Favicon))
+                        {
+                            <img src="@station.Favicon" alt="@station.Name"
+                                 @onerror="@(e => HandleImageError(e, station))" />
+                        }
+                        else
+                        {
+                            <div class="station-placeholder">
+                                <i class="fas fa-broadcast-tower"></i>
+                            </div>
+                        }
+                       <h3>@(station.Name.Length > 20 ? station.Name.Substring(0, 20) + "..." : station.Name)</h3>
+                        <div class="station-meta">
+                            <span><i class="fas fa-broadcast-tower"></i> @(station.Bitrate)kbps</span>
+                            <span><i class="fas fa-music"></i> @station.Codec</span>
+                        </div>
+                       @*  <p>@station.Tags</p> *@
+                    </div>
+                    <div class="station-controls">
+                      <button @onclick="() => TogglePlayStation(station)"
+                                class="play-button @(currentPlayingStation == station.Stationuuid ? "playing" : "")">
+                            <i class="fas @(currentPlayingStation == station.Stationuuid ? "fa-pause" : "fa-play")"></i>
+                        </button>
+                        <button @onclick="() => RemoveFromFavorites(station)" class="favorite-button">
+                            <i class="fas fa-heart"></i>
+                        </button>
+                    </div>
+                </div>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    private List<RadioStation> favoriteStations;
+    private bool isLoading = true;
+    private string currentPlayingStation;
+    private string error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadFavorites();
+    }
+
+    private async Task LoadFavorites()
+    {
+        isLoading = true;
+        favoriteStations = await FavoriteService.GetFavoriteStationsAsync();
+        isLoading = false;
+    }
+
+    private async Task TogglePlayStation(RadioStation station)
+    {
+        try
+        {
+            if (currentPlayingStation == station.Stationuuid)
+            {
+                await JSRuntime.InvokeVoidAsync("stopAudio");
+                currentPlayingStation = null;
+            }
+            else
+            {
+                await JSRuntime.InvokeVoidAsync("playAudio", station.Url_resolved);
+                currentPlayingStation = station.Stationuuid;
+            }
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            error = $"Error playing station: {ex.Message}";
+        }
+    }
+    private bool IsValidImageUrl(string url)
+    {
+        return Uri.TryCreate(url, UriKind.Absolute, out _);
+    }
+    private void HandleImageError(Microsoft.AspNetCore.Components.Web.ErrorEventArgs e, RadioStation station)
+    {
+        station.Favicon = null;
+        StateHasChanged();
+    }
+    private async Task RemoveFromFavorites(RadioStation station)
+    {
+        await FavoriteService.RemoveFavoriteStationAsync(station.Stationuuid);
+        await LoadFavorites();
+    }
+}

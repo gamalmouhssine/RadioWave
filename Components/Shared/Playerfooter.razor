@@ -1,0 +1,110 @@
+﻿@inject IPlayerService PlayerService
+@inject IFavoriteService FavoriteService
+@using RadioWave.Models
+@using RadioWave.Services
+@implements IDisposable
+
+<div class="@(_showPlayer ? "player-footer" : "player-footer hidden")">
+    @if (CurrentStation != null)
+    {
+        <div class="station-info">
+            <div class="station-image">
+                @if (!string.IsNullOrEmpty(CurrentStation.Favicon) && IsValidImageUrl(CurrentStation.Favicon))
+                {
+                    <img src="@CurrentStation.Favicon" alt="@CurrentStation.Name" @onerror="HandleImageError" />
+                }
+                else
+                {
+                    <div class="station-placeholder">
+                        <i class="fas fa-broadcast-tower"></i>
+                    </div>
+                }
+            </div>
+            <div class="station-details">
+                <div class="station-name">@CurrentStation.Name</div>
+                <div class="station-meta">
+                    <span><i class="fas fa-broadcast-tower"></i> @(CurrentStation.Bitrate)kbps</span>
+                    <span><i class="fas fa-music"></i> @CurrentStation.Codec</span>
+                </div>
+            </div>
+        </div>
+        <div class="player-controls">
+            <button @onclick="TogglePlayback" 
+                    class="play-button @(IsPlaying ? "playing" : "")">
+                <i class="fas @(IsPlaying ? "fa-pause" : "fa-play")"></i>
+            </button>
+            <button @onclick="ToggleFavorite" class="favorite-button">
+                <i class="@(IsFavorite ? "fas" : "far") fa-heart"></i>
+            </button>
+        </div>
+    }
+</div>
+@code {
+    private bool _showPlayer => PlayerService.CurrentStation != null;
+    private RadioStation CurrentStation => PlayerService.CurrentStation;
+    private bool IsPlaying => PlayerService.IsPlaying;
+    private bool IsFavorite;
+
+    protected override async Task OnInitializedAsync()
+    {
+        PlayerService.OnStateChanged += StateHasChanged;
+        await CheckFavoriteStatus();
+    }
+
+    private async Task CheckFavoriteStatus()
+    {
+        if (CurrentStation != null)
+        {
+            var favorites = await FavoriteService.GetFavoriteStationsAsync();
+            IsFavorite = favorites.Any(f => f.Stationuuid == CurrentStation.Stationuuid);
+        }
+    }
+
+    private async Task TogglePlayback()
+    {
+        if (IsPlaying)
+        {
+            await PlayerService.StopPlayback();
+        }
+        else if (CurrentStation != null)
+        {
+            await PlayerService.PlayStation(CurrentStation);
+        }
+    }
+
+    private async Task ToggleFavorite()
+    {
+        if (CurrentStation == null) return;
+
+        if (IsFavorite)
+        {
+            await FavoriteService.RemoveFavoriteStationAsync(CurrentStation.Stationuuid);
+        }
+        else
+        {
+            await FavoriteService.AddFavoriteStationAsync(CurrentStation);
+        }
+        
+        IsFavorite = !IsFavorite;
+        StateHasChanged();
+    }
+
+    private bool IsValidImageUrl(string url)
+    {
+        return Uri.TryCreate(url, UriKind.Absolute, out _);
+    }
+
+    private void HandleImageError()
+    {
+        if (CurrentStation != null)
+        {
+            CurrentStation.Favicon = null;
+            StateHasChanged();
+        }
+    }
+
+    public void Dispose()
+    {
+        PlayerService.OnStateChanged -= StateHasChanged;
+    }
+}

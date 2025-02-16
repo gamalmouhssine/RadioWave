@@ -1,0 +1,270 @@
+﻿@page "/stations/{Country}"
+@using RadioWave.Models
+@using RadioWave.Services   
+@using System.Text.Json
+@inject IRadioService RadioService
+@inject IFavoriteService FavoriteService
+@inject IJSRuntime JSRuntime
+@inject IPlayerService PlayerService
+
+
+<div class="container">
+    <div class="stations-header">
+        <div class="back-button" @onclick="NavigateBack">
+            <i class="fas fa-arrow-left"></i> Back
+        </div>
+        <h1>@(Country) Radio Stations</h1>
+        <div class="search-container">
+            
+            <input type="text" @bind="searchQuery" @bind:event="oninput"
+                   placeholder="Search stations..." class="search-input" />
+        </div>
+    </div>
+
+    @if (isLoading)
+    {
+        <div class="loading-container">
+            <div class="spinner"></div>
+            <p>Loading stations...</p>
+        </div>
+    }
+    else if (error != null)
+    {
+        <div class="error-container">
+            <p>@error</p>
+            <button class="retry-button" @onclick="LoadStations">Retry</button>
+        </div>
+    }
+    else if (!stations?.Any() == true)
+    {
+        <div class="empty-container">
+            <p>No stations found for @Country</p>
+        </div>
+    }
+    else
+    {
+        <div class="stations-grid">
+            @foreach (var station in FilteredStations)
+            {
+                <div class="station-card @(currentPlayingStation == station.Stationuuid ? "playing" : "")">
+                    <div class="station-info">
+                        <div class="station-image">
+                            @if (!string.IsNullOrEmpty(station.Favicon) && IsValidImageUrl(station.Favicon))
+                            {
+                                <img src="@station.Favicon" alt="@station.Name"
+                                     @onerror="@(e => HandleImageError(e, station))" />
+                            }
+                            else
+                            {
+                                <div class="station-placeholder">
+                                    <i class="fas fa-broadcast-tower"></i>
+                                </div>
+                            }
+                        </div>
+                        <h3>@(station.Name.Length > 20 ? station.Name.Substring(0, 20) + "..." : station.Name)</h3>
+
+                        
+                        <div class="station-meta">
+                            <span><i class="fas fa-broadcast-tower"></i> @(station.Bitrate)kbps</span>
+                            <span><i class="fas fa-music"></i> @station.Codec</span>
+                        </div>
+                    </div>
+                    <div class="station-controls">
+                        <button @onclick="() => TogglePlayStation(station)"
+                                class="play-button @(currentPlayingStation == station.Stationuuid ? "playing" : "")">
+                            <i class="fas @(currentPlayingStation == station.Stationuuid ? "fa-pause" : "fa-play")"></i>
+                        </button>
+                        <button @onclick="() => ToggleFavorite(station)" class="favorite-button">
+                            <i class="@(IsFavorite(station.Stationuuid) ? "fas" : "far") fa-heart"></i>
+                        </button>
+                    </div>
+                </div>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter]
+    public string Country { get; set; }
+    [Inject]
+    private NavigationManager NavigationManager { get; set; }
+
+    private List<RadioStation> stations;
+    private string searchQuery = "";
+    private HashSet<string> favoriteStations = new();
+    private bool isLoading = true;
+    private bool isLoadingMore = false;
+    private string error;
+    private string currentPlayingStation;
+    private int currentPage = 0;
+    private bool hasMoreStations = true;
+
+    private IEnumerable<RadioStation> FilteredStations =>
+        stations?.Where(s => string.IsNullOrEmpty(searchQuery) ||
+                           s.Name.Contains(searchQuery, StringComparison.OrdinalIgnoreCase)) ??
+        Enumerable.Empty<RadioStation>();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadInitialStations();
+        await LoadFavorites();
+        await InitializeInfiniteScroll();
+    }
+  
+    private async Task LoadStations()
+    {
+        try
+        {
+            isLoading = true;
+            error = null;
+            stations = await RadioService.GetStationsByCountryAsync(Country);
+            // Filter out stations with invalid URLs
+            stations = stations.Where(s => !string.IsNullOrEmpty(s.Url_resolved)).ToList();
+        }
+        catch (Exception ex)
+        {
+            error = $"Error loading stations: {ex.Message}";
+            Console.WriteLine($"Error: {ex}");
+        }
+        finally
+        {
+            isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task LoadFavorites()
+    {
+        var favorites = await FavoriteService.GetFavoriteStationsAsync();
+        favoriteStations = new HashSet<string>(favorites.Select(f => f.Stationuuid));
+    }
+
+    private async Task TogglePlayStation(RadioStation station)
+    {
+        try
+        {
+            if (currentPlayingStation == station.Stationuuid)
+            {
+                await PlayerService.StopPlayback();
+                currentPlayingStation = null;
+            }
+            else
+            {
+                await PlayerService.PlayStation(station);
+                currentPlayingStation = station.Stationuuid;
+            }
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            error = $"Error playing station: {ex.Message}";
+        }
+    }
+
+    private async Task ToggleFavorite(RadioStation station)
+    {
+        if (favoriteStations.Contains(station.Stationuuid))
+        {
+            await FavoriteService.RemoveFavoriteStationAsync(station.Stationuuid);
+            favoriteStations.Remove(station.Stationuuid);
+        }
+        else
+        {
+            await FavoriteService.AddFavoriteStationAsync(station);
+            favoriteStations.Add(station.Stationuuid);
+        }
+        StateHasChanged();
+    }
+
+    private bool IsFavorite(string stationId) => favoriteStations.Contains(stationId);
+
+    private bool IsValidImageUrl(string url)
+    {
+        return Uri.TryCreate(url, UriKind.Absolute, out _);
+    }
+
+    private void HandleImageError(Microsoft.AspNetCore.Components.Web.ErrorEventArgs e, RadioStation station)
+    {
+        station.Favicon = null;
+        StateHasChanged();
+    }
+
+    private void NavigateBack()
+    {
+        NavigationManager.NavigateTo("/");
+    }
+    
+
+    private async Task StartPeriodicRefresh()
+    {
+        while (true)
+        {
+            await Task.Delay(TimeSpan.FromHours(24));
+            await LoadStations();
+            StateHasChanged();
+        }
+    }
+    private async Task LoadInitialStations()
+    {
+        try
+        {
+            isLoading = true;
+            error = null;
+            var initialStations = await RadioService.GetStationsByCountryAsync(Country, 0);
+            stations = initialStations.Where(s => !string.IsNullOrEmpty(s.Url_resolved)).ToList();
+            hasMoreStations = initialStations.Count == 50;
+            currentPage = 0;
+        }
+        catch (Exception ex)
+        {
+            error = $"Error loading stations: {ex.Message}";
+            Console.WriteLine($"Error: {ex}");
+        }
+        finally
+        {
+            isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task LoadMoreStations()
+    {
+        if (isLoadingMore || !hasMoreStations) return;
+
+        try
+        {
+            isLoadingMore = true;
+            currentPage++;
+            var moreStations = await RadioService.GetStationsByCountryAsync(Country, currentPage);
+            var validStations = moreStations.Where(s => !string.IsNullOrEmpty(s.Url_resolved)).ToList();
+
+            stations.AddRange(validStations);
+            hasMoreStations = moreStations.Count == 50;
+
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            error = $"Error loading more stations: {ex.Message}";
+            Console.WriteLine($"Error: {ex}");
+        }
+        finally
+        {
+            isLoadingMore = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task InitializeInfiniteScroll()
+    {
+        await JSRuntime.InvokeVoidAsync("initializeInfiniteScroll", DotNetObjectReference.Create(this));
+    }
+
+    [JSInvokable]
+    public async Task OnScroll()
+    {
+        await LoadMoreStations();
+    }
+
+}
